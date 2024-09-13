@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>ws3 sender</title>
+  </head>
+  <body>
+    <h1>ws3 sender</h1>
+    <video id="video" autoplay></video>
+    <div id="debug">----</div>
+    <a href="/">root</a> <a href="../sender">sender</a>
+    <script>
+      
+      let senderConnection_localDescription = '';
+      let viewerConnection_localDescription = '';
+      let senderConnection_onicecandidate = '';
+      let senderConnection;
+      let peerType = 'local';
+      
+      // WS
+      const wsType = 'sender';
+
+      // 8081 は sender
+      const wsURL = 'wss://bug-free-fishstick-774r75q5xj2rw9p-8081.app.github.dev/';
+      console.log(wsURL);
+      
+      const socket = new WebSocket(wsURL);
+      socket.onopen = () => {
+        console.log('Connected to the WSS server');
+        document.getElementById("debug").innerHTML += `----<br />Connected to the WSS server<br />`;
+        socket.send(JSON.stringify({
+          'type':'from_sender',
+          'status':'open'
+        }));
+
+        // 初動処理
+        /**
+         * @type {RTCConfiguration}
+         */
+        const CONFIG_FOR_SENDER = {
+          iceServers: [
+            {
+              urls: "stun:stun.l.google.com:19302",
+            },
+          ],
+        };
+
+        // 同一マシン間通信なら CONFIG_FOR_SENDER 入れなくても良い
+        // const senderConnection = new RTCPeerConnection(CONFIG_FOR_SENDER);
+
+        peerType = window.prompt(
+          `WebRTC サーバーを起動します。外部マシン間通信なら other と入力します。
+（デフォルトは local）`,
+          peerType
+        );
+
+        console.log(`peerType : ${peerType}`);
+
+        socket.send(JSON.stringify({
+          'type':'from_sender',
+          'status':'senderConnection_initSetting',
+          'peerType':peerType
+        }));
+
+        if(peerType == 'local') {
+          senderConnection = new RTCPeerConnection();
+        } else {
+          senderConnection = new RTCPeerConnection(CONFIG_FOR_SENDER);
+        }
+        
+        document.getElementById("debug").innerHTML += `----<br />開始 peerType ${peerType}<br />`;
+
+        const candidates = [];
+        /**
+         * @param {RTCPeerConnectionIceEvent} e
+         */
+        senderConnection.onicecandidate = (e) => {
+          if (!e.candidate) {
+            // 自分(Sender) の ICE を入力させる
+            console.log('自分(Sender) の ICE を入力させる');
+            console.log('sender の ice candidate はこちらです。receiver 側に入力してください。');
+            senderConnection_onicecandidate = JSON.stringify(candidates);
+            console.log(senderConnection_onicecandidate);
+
+            /*
+            windows.prompt(
+              `sender の ice candidate はこちらです。receiver 側に入力してください。`,
+              senderConnection_onicecandidate
+            );
+            */
+
+            socket.send(JSON.stringify({
+              'type':'from_sender',
+              'status':'senderConnection_onicecandidate',
+              'senderConnection_onicecandidate':senderConnection_onicecandidate
+            }));
+
+            
+            document.getElementById("debug").innerHTML += `----<br />ICE 確定 ${senderConnection_onicecandidate}<br />`;
+
+            return;
+          }
+          candidates.push(e.candidate);
+        };
+
+        const videoEl = document.getElementById("video");
+
+        if (videoEl === null || !(videoEl instanceof HTMLVideoElement))
+          throw new Error("要素作りミス");
+
+
+        /**
+         * @see https://stackoverflow.com/questions/38036552/rtcpeerconnection-onicecandidate-not-fire
+         * */
+        navigator.mediaDevices
+          .getUserMedia({ video: true, audio: false })
+          .then((stream) => {
+            videoEl.srcObject = stream;
+            stream.getTracks().forEach((track) => {
+              senderConnection.addTrack(track, stream);
+            });
+            return senderConnection.createOffer();
+          })
+          .then((desc) => {
+            return senderConnection.setLocalDescription(desc).then(() => desc);
+          })
+          .then((desc) => {
+            senderConnection_localDescription = JSON.stringify(senderConnection.localDescription);
+            console.log(senderConnection_localDescription);
+            
+            /*
+            alert(
+              `sender の sdp offer を log に出力したので sender に入力してください。`
+            );
+            */
+
+            socket.send(JSON.stringify({
+              'type':'from_sender',
+              'status':'senderConnection_localDescription',
+              'senderConnection_localDescription':senderConnection_localDescription
+            }));
+
+            document.getElementById("debug").innerHTML += `----<br />sdp offer 確定 ${senderConnection.localDescription}<br />`;
+            
+            return desc;
+          })
+          /*
+          .then(() => {
+            const receiverAnswer = window.prompt(
+              "receiver の SDP answer description を入力してください。",
+              viewerConnection_localDescription
+            );
+            return senderConnection.setRemoteDescription(
+              JSON.parse(receiverAnswer)
+            );
+            console.log("success sdp, peer:", senderConnection);
+          })*/
+          .catch((e) => console.error(e));
+      };
+
+      socket.onmessage = async (event) => {
+        const message = JSON.parse(event.data.toString());
+        if(message.type == 'from_receiver'){
+          console.log('Message from server:', message);
+          if(message.status == 'viewerConnection_localDescription'){
+            viewerConnection_localDescription = message.viewerConnection_localDescription;
+            viewerConnection_localDescription_json = JSON.parse(viewerConnection_localDescription);
+
+            console.log('receiver の SDP answer description を入力してください。');
+            console.log(viewerConnection_localDescription_json);
+
+            /*
+            const receiverAnswer = window.prompt(
+              "receiver の SDP answer description を入力してください。",
+              viewerConnection_localDescription
+            );
+            */
+            
+            await senderConnection.setRemoteDescription(
+              viewerConnection_localDescription_json
+            );
+
+            console.log("success sdp, peer:", senderConnection);
+
+            document.getElementById("debug").innerHTML += `----<br />success sdp, peer ${viewerConnection_localDescription}<br />`;
+          }
+        }
+      };
+
+      socket.onclose = () => {
+        console.log('Disconnected from the WSS server');
+        document.getElementById("debug").innerHTML = `----<br />Disconnected from the WSS server<br />`;
+      };
+
+      
+    </script>
+  </body>
+</html>

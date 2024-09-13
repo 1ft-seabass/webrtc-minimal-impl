@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <script src="https://aframe.io/releases/1.6.0/aframe.min.js"></script>
+    <title>ws2 receiver</title>
+  </head>
+  <body>
+    
+    <a-scene>
+      <a-assets>
+        <video id="video-el" playsinline muted autoplay src="sample.mp4"></video>
+      </a-assets>
+      <a-video src="#video-el" width="16" height="9" position="0 5 -10"></a-video>
+      <a-sphere position="0 1.25 -10" radius="1.25" color="#EF2D5E"></a-sphere>
+      <a-plane position="0 0 -4" rotation="-90 0 0" width="4" height="4" color="#7BC8A4"></a-plane>
+      <a-sky color="#ECECEC"></a-sky>
+    </a-scene>
+    
+
+    <script>
+      // https://qiita.com/kiyu_knowledges/items/2685d1f9323221ac335c
+      // https://stackoverflow.com/questions/71271355/a-frame-video-not-playing-only-1st-frame-visible
+
+      window.addEventListener('click', function () { 
+        document.querySelector('#video-el').play();
+      });
+
+      // WS
+      const wsType = 'receiver';
+
+      // 8082 は receiver
+      const wsURL = 'wss://bug-free-fishstick-774r75q5xj2rw9p-8082.app.github.dev/';
+      console.log(wsURL);
+
+      let senderConnection_localDescription = '';
+      let viewerConnection_localDescription = '';
+      let senderConnection_onicecandidate = '';
+      let viewerConnection;
+      let peerType = 'local';
+      
+      const socket = new WebSocket(wsURL);
+      socket.onopen = async () => {
+        console.log('Connected to the WSS server');
+        socket.send(JSON.stringify({
+          'type':'from_receiver',
+          'status':'open'
+        }));
+      };
+
+      socket.onmessage = async (event) => {
+        const message = JSON.parse(event.data.toString());
+        if(message.type == 'from_sender'){
+          console.log('Message from server:', message);
+          if(message.status == 'senderConnection_initSetting'){
+            
+            console.log(`message.peerType ${message.peerType}`);
+
+            peerType = message.peerType;
+
+            init();
+
+          } else if(message.status == 'senderConnection_localDescription'){
+            senderConnection_localDescription = message.senderConnection_localDescription;
+            console.log('sender 側から送られてくる SDP offer を入力してください');
+            // console.log(senderConnection_localDescription);
+            const senderConnection_localDescription_json = JSON.parse(senderConnection_localDescription);
+            console.log(senderConnection_localDescription_json);
+
+            // SDP の設定
+            /*
+            const offer = window.prompt(
+              "sender 側から送られてくる SDP offer を入力してください",
+              senderConnection_localDescription
+            );
+            */
+
+            offer = senderConnection_localDescription_json;
+            if (!offer) {
+              throw new Error("offerがないのは不正です");
+            }
+
+            const rtcPeerConnection = await viewerConnection.setRemoteDescription(senderConnection_localDescription_json);
+            const answer = await viewerConnection.createAnswer();
+            await viewerConnection.setLocalDescription(answer);
+
+            viewerConnection_localDescription = JSON.stringify(viewerConnection.localDescription);
+            console.log(viewerConnection_localDescription);
+
+            /*
+            alert(
+              "viewer の SDP answer を log に出力しました。これを viewer の SDP description として sender 側に入力してください。"
+            );
+            */
+           
+            console.log("success sdp, peer:", viewerConnection);
+
+            socket.send(JSON.stringify({
+              'type':'from_receiver',
+              'status':'viewerConnection_localDescription',
+              'viewerConnection_localDescription':viewerConnection_localDescription
+            }));
+
+          } else if(message.status == 'senderConnection_onicecandidate'){
+            /*
+            const senderIceStr = window.prompt(
+              "sender が提示するICEを入力してください"
+            );
+            */
+            console.log('sender が提示するICEを入力してください');
+            const senderConnection_onicecandidate = message.senderConnection_onicecandidate;
+            const senderIceStr = senderConnection_onicecandidate;
+            if (!senderIceStr) {
+              throw new Error("sdpAnswer がないのは不正です");
+            }
+            
+            const senderConnection_onicecandidate_json = JSON.parse(senderConnection_onicecandidate);
+            console.log(senderConnection_onicecandidate_json);
+
+
+            //
+            // * ICE Candidatesを受け取る
+            // * @type {RTCIceCandidateInit[]}
+            //
+            const senderCandidates = senderConnection_onicecandidate_json;
+            senderCandidates.forEach((candidate) => {
+              if (candidate === null) return;
+              viewerConnection.addIceCandidate(candidate).catch((e) => {
+                console.error("Sender addIceCandidate error", e);
+              });
+            });
+          }
+        }
+      };
+
+      socket.onclose = () => {
+        console.log('Disconnected from the WSS server');
+      };
+
+      async function init(){
+        // 初動処理
+          
+        /**
+         * @type {RTCConfiguration}
+         */
+        const CONFIG_FOR_VIEWER = {
+          iceServers: [
+            {
+              urls: "stun:stun.l.google.com:19302",
+            },
+          ],
+        };
+
+        // 同一マシン間通信なら CONFIG_FOR_VIEWER 入れなくても良い
+        // const viewerConnection = new RTCPeerConnection();
+        
+        console.log(`peerType ${peerType}`);
+
+        if(peerType == 'local') {
+          viewerConnection = new RTCPeerConnection();
+        } else {
+          viewerConnection = new RTCPeerConnection(CONFIG_FOR_VIEWER);
+        }
+        
+        const videoEl = document.getElementById("video-el");
+
+        if (videoEl === null || !(videoEl instanceof HTMLVideoElement)){
+          throw new Error("あるはず");
+        }
+
+        console.log('videoEl');
+        console.log(videoEl);
+
+        viewerConnection.ontrack = (e) => {
+          const stream = event.streams[0];
+          if (stream === undefined) {
+            console.error("stream not found");
+            throw new Error("");
+          }
+
+          videoEl.srcObject = stream;
+        };
+      }
+
+      // init();
+      
+    </script>
+  </body>
+</html>

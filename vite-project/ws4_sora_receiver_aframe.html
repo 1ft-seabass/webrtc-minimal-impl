@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <script src="https://aframe.io/releases/1.6.0/aframe.min.js"></script>
+    <title>ws4_sora_receiver_aframe</title>
+  </head>
+  <body>
+    
+    <a-scene>
+      <a-assets>
+        <video id="video-el" playsinline muted autoplay></video>
+      </a-assets>
+      <a-video src="#video-el" width="16" height="9" position="0 5 -10"></a-video>
+      <a-sphere position="0 1.25 -10" radius="1.25" color="#EF2D5E"></a-sphere>
+      <a-plane position="0 0 -4" rotation="-90 0 0" width="4" height="4" color="#7BC8A4"></a-plane>
+      <a-sky color="#ECECEC"></a-sky>
+    </a-scene>
+    
+    <script type="module" src="./main.js"></script>
+
+  </body>
+</html>
