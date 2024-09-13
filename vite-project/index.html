@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>webrtc minimal impl</title>
+  </head>
+  <body>
+    <a href="./receiver">receiver</a>
+    <a href="./sender">sender</a>
+    <br /><br />
+    <a href="./ws_receiver">ws receiver</a>
+    <a href="./ws_sender">ws sender</a>
+    <br /><br />
+    <a href="./ws2_receiver">ws receiver ver.2</a>
+    <a href="./ws2_receiver_aframe">ws receiver ver.2(aframe)</a>
+    <a href="./ws2_sender">ws sender ver.2</a>
+    <br /><br />
+    <a href="./ws3_receiver">ws3 receiver</a>
+    <a href="./ws3_sender">ws3 sender</a>
+    <br /><br />
+    <a href="./ws4_sora_receiver_aframe">ws4_sora_receiver_aframe</a>
+
+    <script>
+      const wsURL = 'wss://bug-free-fishstick-774r75q5xj2rw9p-8081.app.github.dev/';
+      
+      // const wsURL = 'wss://' + location.host + '/ws';
+      // const wsURL = 'wss://localhost:5173/ws';
+      console.log(wsURL);
+      // const wsURL = 'wss://localhost:8081/';
+      const socket = new WebSocket(wsURL);
+      socket.onopen = () => {
+        console.log('Connected to the WSS server');
+        socket.send(JSON.stringify({
+          'type':'index',
+          'status':'open'
+        }));
+      };
+
+      socket.onmessage = (event) => {
+        console.log('Message from server:', event.data);
+      };
+
+      socket.onclose = () => {
+        console.log('Disconnected from the WSS server');
+      };
+      //con.send('Hello WebSocket!');
+      //con.close();
+    </script>
+  </body>
+</html>
